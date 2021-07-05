@@ -27,6 +27,7 @@ import java.util.Properties;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import com.alibaba.druid.DbType;
 import com.alibaba.druid.VERSION;
 import com.alibaba.druid.filter.Filter;
 import com.alibaba.druid.filter.FilterChain;
@@ -60,45 +61,52 @@ import com.alibaba.druid.support.profile.Profiler;
  */
 public class StatFilter extends FilterEventAdapter implements StatFilterMBean {
 
-    private final static Log          LOG                        = LogFactory.getLog(StatFilter.class);
+    private final static Log          LOG                         = LogFactory.getLog(StatFilter.class);
 
-    private static final String       SYS_PROP_LOG_SLOW_SQL      = "druid.stat.logSlowSql";
-    private static final String       SYS_PROP_SLOW_SQL_MILLIS   = "druid.stat.slowSqlMillis";
-    private static final String       SYS_PROP_MERGE_SQL         = "druid.stat.mergeSql";
+    private static final String       SYS_PROP_LOG_SLOW_SQL       = "druid.stat.logSlowSql";
+    private static final String       SYS_PROP_SLOW_SQL_MILLIS    = "druid.stat.slowSqlMillis";
+    private static final String       SYS_PROP_SLOW_SQL_LOG_LEVEL = "druid.stat.slowSqlLogLevel";
+    private static final String       SYS_PROP_MERGE_SQL          = "druid.stat.mergeSql";
 
-    public final static String        ATTR_NAME_CONNECTION_STAT  = "stat.conn";
-    public final static String        ATTR_TRANSACTION           = "stat.tx";
+    public final static String        ATTR_NAME_CONNECTION_STAT   = "stat.conn";
+    public final static String        ATTR_TRANSACTION            = "stat.tx";
 
-    private final Lock                lock                       = new ReentrantLock();
+    private final Lock                lock                        = new ReentrantLock();
 
     // protected JdbcDataSourceStat dataSourceStat;
 
     @Deprecated
-    protected final JdbcStatementStat statementStat              = JdbcStatManager.getInstance().getStatementStat();
+    protected final JdbcStatementStat statementStat               = JdbcStatManager.getInstance().getStatementStat();
 
     @Deprecated
-    protected final JdbcResultSetStat resultSetStat              = JdbcStatManager.getInstance().getResultSetStat();
+    protected final JdbcResultSetStat resultSetStat               = JdbcStatManager.getInstance().getResultSetStat();
 
-    private boolean                   connectionStackTraceEnable = false;
+    private boolean                   connectionStackTraceEnable  = false;
 
     // 3 seconds is slow sql
-    protected long                    slowSqlMillis              = 3 * 1000;
+    protected long                    slowSqlMillis               = 3 * 1000;
 
-    protected boolean                 logSlowSql                 = false;
+    protected boolean                 logSlowSql                  = false;
 
-    private String                    dbType;
+    protected String                  slowSqlLogLevel             = "ERROR";
 
-    private boolean                   mergeSql                   = false;
+    private DbType                    dbType;
+
+    private boolean                   mergeSql                    = false;
 
     public StatFilter(){
     }
 
-    public String getDbType() {
+    public DbType getDbType() {
         return dbType;
     }
 
-    public void setDbType(String dbType) {
+    public void setDbType(DbType dbType) {
         this.dbType = dbType;
+    }
+
+    public void setDbType(String dbType) {
+        this.dbType = DbType.of(dbType);
     }
 
     public long getSlowSqlMillis() {
@@ -133,18 +141,30 @@ public class StatFilter extends FilterEventAdapter implements StatFilterMBean {
         this.mergeSql = mergeSql;
     }
 
+    public String getSlowSqlLogLevel() {
+        return slowSqlLogLevel;
+    }
+
+    public void setSlowSqlLogLevel(String slowSqlLogLevel) {
+        this.slowSqlLogLevel = slowSqlLogLevel;
+    }
+
     @Deprecated
     public String mergeSql(String sql) {
         return this.mergeSql(sql, dbType);
     }
 
     public String mergeSql(String sql, String dbType) {
+        return mergeSql(sql, DbType.of(dbType));
+    }
+
+    public String mergeSql(String sql, DbType dbType) {
         if (!mergeSql) {
             return sql;
         }
 
         try {
-            sql = ParameterizedOutputVisitorUtils.parameterize(sql, dbType);
+            sql = ParameterizedOutputVisitorUtils.parameterize(sql, dbType, null, null, null);
         } catch (Exception e) {
             LOG.error("merge sql error, dbType " + dbType + ", druid-" + VERSION.getVersionNumber() + ", sql : " + sql, e);
         }
@@ -156,8 +176,8 @@ public class StatFilter extends FilterEventAdapter implements StatFilterMBean {
     public void init(DataSourceProxy dataSource) {
         lock.lock();
         try {
-            if (this.dbType == null || this.dbType.trim().length() == 0) {
-                this.dbType = dataSource.getDbType();
+            if (this.dbType == null) {
+                this.dbType = DbType.of(dataSource.getDbType());
             }
 
             configFromProperties(dataSource.getConnectProperties());
@@ -199,6 +219,19 @@ public class StatFilter extends FilterEventAdapter implements StatFilterMBean {
                 this.logSlowSql = true;
             } else if ("false".equals(property)) {
                 this.logSlowSql = false;
+            }
+        }
+
+        {
+            String property = properties.getProperty(SYS_PROP_SLOW_SQL_LOG_LEVEL);
+            if ("error".equalsIgnoreCase(property)) {
+                this.slowSqlLogLevel = "ERROR";
+            } else if ("warn".equalsIgnoreCase(property)) {
+                this.slowSqlLogLevel = "WARN";
+            } else if ("info".equalsIgnoreCase(property)) {
+                this.slowSqlLogLevel = "INFO";
+            } else if ("debug".equalsIgnoreCase(property)) {
+                this.slowSqlLogLevel = "DEBUG";
             }
         }
     }
@@ -475,7 +508,20 @@ public class StatFilter extends FilterEventAdapter implements StatFilterMBean {
 
                 String lastExecSql = statement.getLastExecuteSql();
                 if (logSlowSql) {
-                    LOG.error("slow sql " + millis + " millis. " + lastExecSql + "" + slowParameters);
+                    String msg = "slow sql " + millis + " millis. " + lastExecSql + "" + slowParameters;
+                    switch (slowSqlLogLevel) {
+                        case "WARN":
+                            LOG.warn(msg);
+                            break;
+                        case "INFO":
+                            LOG.info(msg);
+                            break;
+                        case "DEBUG":
+                            LOG.debug(msg);
+                            break;
+                        default:
+                            LOG.error(msg);
+                    }
                 }
 
                 handleSlowSql(statement);
@@ -639,10 +685,10 @@ public class StatFilter extends FilterEventAdapter implements StatFilterMBean {
         if (contextSql != null && contextSql.length() > 0) {
             return dataSourceStat.createSqlStat(contextSql);
         } else {
-            String dbType = this.dbType;
+            DbType dbType = this.dbType;
 
             if (dbType == null) {
-                dbType = dataSource.getDbType();
+                dbType = DbType.of(dataSource.getDbType());
             }
 
             sql = mergeSql(sql, dbType);

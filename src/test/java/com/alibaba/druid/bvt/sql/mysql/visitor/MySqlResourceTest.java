@@ -47,7 +47,84 @@ public class MySqlResourceTest extends TestCase {
 //        exec_test("bvt/parser/mysql-11.txt");
 //        exec_test("bvt/parser/mysql-12.txt");
 //        exec_test("bvt/parser/mysql-13.txt");
-        exec_test("bvt/parser/mysql-14.txt");
+        exec_test("bvt/parser/mysql-0.txt");
+    }
+
+
+    public void test_14() throws Exception {
+        exec_test("bvt/parser/mysql-16.txt");
+    }
+
+    public void test_16() throws Exception {
+        exec_test("bvt/parser/mysql-16.txt");
+    }
+
+    public void test_17() throws Exception {
+        exec_test("bvt/parser/mysql-17.txt");
+    }
+
+    public void test_18() throws Exception {
+        exec_test("bvt/parser/mysql-18.txt");
+    }
+
+    public void test_19() throws Exception {
+        exec_test("bvt/parser/mysql-19.txt");
+    }
+
+    public void test_20() throws Exception {
+        exec_test("bvt/parser/mysql-20.txt");
+    }
+
+    public void test_21() throws Exception {
+        exec_test("bvt/parser/mysql-21.txt");
+    }
+
+    public void test_22() throws Exception {
+//        exec_test("bvt/parser/mysql-22.txt");
+    }
+
+    public void test_23() throws Exception {
+        exec_test("bvt/parser/mysql-23.txt");
+    }
+
+    public void test_24() throws Exception {
+        exec_test("bvt/parser/mysql-24.txt");
+    }
+
+    public void test_25() throws Exception {
+        exec_test("bvt/parser/mysql-25.txt");
+    }
+
+    public void test_26() throws Exception {
+        exec_test("bvt/parser/mysql-26.txt");
+    }
+
+    public void test_27() throws Exception {
+        exec_test("bvt/parser/mysql-27.txt");
+    }
+
+    public void test_28() throws Exception {
+        exec_test("bvt/parser/mysql-28.txt");
+    }
+
+    public void test_29() throws Exception {
+        exec_test("bvt/parser/mysql-29.txt");
+    }
+
+    public void test_30() throws Exception {
+        exec_test("bvt/parser/mysql-30.txt");
+    }
+
+    public void test_31() throws Exception {
+        exec_test("bvt/parser/mysql-31.txt");
+    }
+
+    public void test_32() throws Exception {
+        exec_test("bvt/parser/mysql-32.txt");
+    }
+
+    public void test_33() throws Exception {
+        exec_test("bvt/parser/mysql-33.txt");
     }
 
     public void exec_test(String resource) throws Exception {
@@ -61,15 +138,18 @@ public class MySqlResourceTest extends TestCase {
         String[] items = input.split("---------------------------");
         String sql = items[0].trim();
         String expect = items[1].trim();
+        if (expect != null) {
+            expect = expect.replaceAll("\\r\\n", "\n");
+        }
 
         MySqlStatementParser parser = new MySqlStatementParser(sql);
         List<SQLStatement> statementList = parser.parseStatementList();
-        SQLStatement statemen = statementList.get(0);
+        SQLStatement stmt = statementList.get(0);
 
-        Assert.assertEquals(1, statementList.size());
+        assertEquals(1, statementList.size());
 
         MySqlSchemaStatVisitor visitor = new MySqlSchemaStatVisitor();
-        statemen.accept(visitor);
+        stmt.accept(visitor);
 
 //        System.out.println(sql);
 //        System.out.println("Tables : " + visitor.getTables());
@@ -77,6 +157,10 @@ public class MySqlResourceTest extends TestCase {
 //
 //        System.out.println();
 //        System.out.println();
+
+        if (expect != null && !expect.isEmpty()) {
+            assertEquals(expect, stmt.toString());
+        }
     }
 
     void mergValidate(String sql, String expect) {

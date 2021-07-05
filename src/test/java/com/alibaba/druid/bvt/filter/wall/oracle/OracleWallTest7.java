@@ -27,4 +27,22 @@ public class OracleWallTest7 extends TestCase {
                 + "end";
         Assert.assertTrue(WallUtils.isValidateOracle(sql));
     }
+
+    public void test_insert_all() throws Exception {
+        String sql = //
+        "INSERT ALL\n" +
+                "  INTO mytable (column1, column2, column_n) VALUES (expr1, expr2, expr_n)\n" +
+                "  INTO mytable (column1, column2, column_n) VALUES (expr1, expr2, expr_n)\n" +
+                "  INTO mytable (column1, column2, column_n) VALUES (expr1, expr2, expr_n)\n" +
+                "SELECT * FROM dual;";
+
+        assertTrue(WallUtils.isValidateOracle(sql));
+    }
+
+    public void test_lock() throws Exception {
+        String sql = //
+        "LOCK TABLE \"SFXT\".\"FLYWAY_SCHEMA_HISTORY\" IN EXCLUSIVE MODE";
+
+        assertTrue(WallUtils.isValidateOracle(sql));
+    }
 }

@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
+import com.alibaba.druid.DbType;
 import com.alibaba.druid.filter.FilterChain;
 import com.alibaba.druid.filter.FilterEventAdapter;
 import com.alibaba.druid.pool.DruidDataSource;
@@ -121,11 +122,37 @@ public abstract class LogFilter extends FilterEventAdapter implements LogFilterM
                 statementExecutableSqlLogEnable = false;
             }
         }
+        {
+            String prop = properties.getProperty("druid.log.conn.logError");
+            if ("false".equals(prop)) {
+                connectionLogErrorEnabled = false;
+            } else if ("true".equals(prop)) {
+                connectionLogErrorEnabled = true;
+            }
+        }
+        {
+            String prop = properties.getProperty("druid.log.stmt.logError");
+            if ("false".equals(prop)) {
+                statementLogErrorEnabled = false;
+            } else if ("true".equals(prop)) {
+                statementLogErrorEnabled = true;
+            }
+        }
+        {
+            String prop = properties.getProperty("druid.log.rs.logError");
+            if ("false".equals(prop)) {
+                resultSetLogErrorEnabled = false;
+            } else if ("true".equals(prop)) {
+                resultSetLogErrorEnabled = true;
+            }
+        }
     }
 
     @Override
     public void init(DataSourceProxy dataSource) {
         this.dataSource = dataSource;
+        configFromProperties(dataSource.getConnectProperties());
+        configFromProperties(System.getProperties());
     }
 
     public boolean isConnectionLogErrorEnabled() {
@@ -373,7 +400,7 @@ public abstract class LogFilter extends FilterEventAdapter implements LogFilterM
                     .append(connection.getId());
 
             Connection impl = connection.getRawObject();
-            if (JdbcConstants.MYSQL.equals(dataSource.getDbType())) {
+            if (DbType.mysql == DbType.of(dataSource.getDbType())) {
                 Long procId = MySqlUtils.getId(impl);
                 if (procId != null) {
                     msg.append(",procId-").append(procId);
@@ -575,7 +602,7 @@ public abstract class LogFilter extends FilterEventAdapter implements LogFilterM
                     : null);
         }
 
-        String dbType = statement.getConnectionProxy().getDirectDataSource().getDbType();
+        DbType dbType = DbType.of(statement.getConnectionProxy().getDirectDataSource().getDbType());
         String formattedSql = SQLUtils.format(sql, dbType, parameters, this.statementSqlFormatOption);
         statementLog("{conn-" + statement.getConnectionProxy().getId() + ", " + stmtId(statement) + "} executed. "
                      + formattedSql);
@@ -773,7 +800,7 @@ public abstract class LogFilter extends FilterEventAdapter implements LogFilterM
             					? jdbcParam.getValue()
             							: null);
             		}
-            		String dbType = statement.getConnectionProxy().getDirectDataSource().getDbType();
+            		DbType dbType = DbType.of(statement.getConnectionProxy().getDirectDataSource().getDbType());
             		String formattedSql = SQLUtils.format(sql, dbType, parameters, this.statementSqlFormatOption);
 			        statementLogError("{conn-" + statement.getConnectionProxy().getId()
                                 + ", " + stmtId(statement)

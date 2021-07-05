@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2018 Alibaba Group Holding Ltd.
+ * Copyright 1999-2017 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ public class MySqlAlterViewTest_0 extends TestCase {
                 "AS\n" +
                 "SELECT count(*)\n" +
                 "FROM t3;", SQLUtils.toMySqlString(stmt));
-        assertEquals("atler definer = 'ivan'@'%'\n" +
+        assertEquals("alter definer = 'ivan'@'%'\n" +
                 "\tview my_view3\n" +
                 "as\n" +
                 "select count(*)\n" +

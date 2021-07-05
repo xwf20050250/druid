@@ -60,6 +60,7 @@ import javax.sql.ConnectionPoolDataSource;
 import javax.sql.PooledConnection;
 
 import com.alibaba.druid.Constants;
+import com.alibaba.druid.DbType;
 import com.alibaba.druid.TransactionTimeoutException;
 import com.alibaba.druid.VERSION;
 import com.alibaba.druid.filter.AutoLoad;
@@ -81,6 +82,7 @@ import com.alibaba.druid.stat.DruidDataSourceStatManager;
 import com.alibaba.druid.stat.JdbcDataSourceStat;
 import com.alibaba.druid.stat.JdbcSqlStat;
 import com.alibaba.druid.stat.JdbcSqlStatValue;
+import com.alibaba.druid.support.clickhouse.BalancedClickhouseDriver;
 import com.alibaba.druid.support.logging.Log;
 import com.alibaba.druid.support.logging.LogFactory;
 import com.alibaba.druid.util.JMXUtils;
@@ -568,6 +570,10 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
     }
 
     public void restart() throws SQLException {
+        this.restart(null);
+    }
+
+    public void restart(Properties properties) throws SQLException {
         lock.lock();
         try {
             if (activeCount > 0) {
@@ -582,6 +588,10 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             this.inited = false;
             this.enable = true;
             this.closed = false;
+
+            if (properties != null) {
+                configFromPropety(properties);
+            }
         } finally {
             lock.unlock();
         }
@@ -828,14 +838,15 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                 filter.init(this);
             }
 
-            if (this.dbType == null || this.dbType.length() == 0) {
-                this.dbType = JdbcUtils.getDbType(jdbcUrl, null);
+            if (this.dbTypeName == null || this.dbTypeName.length() == 0) {
+                this.dbTypeName = JdbcUtils.getDbType(jdbcUrl, null);
             }
 
-            if (JdbcConstants.MYSQL.equals(this.dbType)
-                    || JdbcConstants.MARIADB.equals(this.dbType)
-                    || JdbcConstants.OCEANBASE.equals(this.dbType)
-                    || JdbcConstants.ALIYUN_ADS.equals(this.dbType)) {
+            DbType dbType = DbType.of(this.dbTypeName);
+            if (dbType == DbType.mysql
+                    || dbType == DbType.mariadb
+                    || dbType == DbType.oceanbase
+                    || dbType == DbType.ads) {
                 boolean cacheServerConfigurationSet = false;
                 if (this.connectProperties.containsKey("cacheServerConfiguration")) {
                     cacheServerConfigurationSet = true;
@@ -867,6 +878,10 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                 throw new SQLException("maxEvictableIdleTimeMillis must be grater than minEvictableIdleTimeMillis");
             }
 
+            if (keepAlive && keepAliveBetweenTimeMillis <= timeBetweenEvictionRunsMillis) {
+                throw new SQLException("keepAliveBetweenTimeMillis must be grater than timeBetweenEvictionRunsMillis");
+            }
+
             if (this.driverClass != null) {
                 this.driverClass = driverClass.trim();
             }
@@ -884,14 +899,14 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             if (isUseGlobalDataSourceStat()) {
                 dataSourceStat = JdbcDataSourceStat.getGlobal();
                 if (dataSourceStat == null) {
-                    dataSourceStat = new JdbcDataSourceStat("Global", "Global", this.dbType);
+                    dataSourceStat = new JdbcDataSourceStat("Global", "Global", this.dbTypeName);
                     JdbcDataSourceStat.setGlobal(dataSourceStat);
                 }
                 if (dataSourceStat.getDbType() == null) {
-                    dataSourceStat.setDbType(this.dbType);
+                    dataSourceStat.setDbType(this.dbTypeName);
                 }
             } else {
-                dataSourceStat = new JdbcDataSourceStat(this.name, this.jdbcUrl, this.dbType, this.connectProperties);
+                dataSourceStat = new JdbcDataSourceStat(this.name, this.jdbcUrl, this.dbTypeName, this.connectProperties);
             }
             dataSourceStat.setResetStatEnable(this.resetStatEnable);
 
@@ -1194,6 +1209,12 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
 
             if (MockDriver.class.getName().equals(driverClass)) {
                 driver = MockDriver.instance;
+            } else if ("com.alibaba.druid.support.clickhouse.BalancedClickhouseDriver".equals(driverClass)) {
+                Properties info = new Properties();
+                info.put("user", username);
+                info.put("password", password);
+                info.putAll(connectProperties);
+                driver = new BalancedClickhouseDriver(jdbcUrl, info);
             } else {
                 if (jdbcUrl == null && (driverClass == null || driverClass.length() == 0)) {
                     throw new SQLException("url not set");
@@ -1208,7 +1229,9 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
     }
 
     protected void initCheck() throws SQLException {
-        if (JdbcUtils.ORACLE.equals(this.dbType)) {
+        DbType dbType = DbType.of(this.dbTypeName);
+
+        if (dbType == DbType.oracle) {
             isOracle = true;
 
             if (driver.getMajorVersion() < 10) {
@@ -1221,10 +1244,10 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             }
 
             oracleValidationQueryCheck();
-        } else if (JdbcUtils.DB2.equals(dbType)) {
+        } else if (dbType == DbType.db2) {
             db2ValidationQueryCheck();
-        } else if (JdbcUtils.MYSQL.equals(this.dbType)
-                || JdbcUtils.MYSQL_DRIVER_6.equals(this.dbType)) {
+        } else if (dbType == DbType.mysql
+                || JdbcUtils.MYSQL_DRIVER_6.equals(this.driverClass)) {
             isMySql = true;
         }
 
@@ -1241,7 +1264,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             return;
         }
 
-        SQLStatementParser sqlStmtParser = SQLParserUtils.createSQLStatementParser(validationQuery, this.dbType);
+        SQLStatementParser sqlStmtParser = SQLParserUtils.createSQLStatementParser(validationQuery, this.dbTypeName);
         List<SQLStatement> stmtList = sqlStmtParser.parseStatementList();
 
         if (stmtList.size() != 1) {
@@ -1270,7 +1293,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             return;
         }
 
-        SQLStatementParser sqlStmtParser = SQLParserUtils.createSQLStatementParser(validationQuery, this.dbType);
+        SQLStatementParser sqlStmtParser = SQLParserUtils.createSQLStatementParser(validationQuery, this.dbTypeName);
         List<SQLStatement> stmtList = sqlStmtParser.parseStatementList();
 
         if (stmtList.size() != 1) {
@@ -1336,7 +1359,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                     || realDriverClassName.equals(JdbcConstants.ORACLE_DRIVER2)) {
                 this.exceptionSorter = new OracleExceptionSorter();
             } else if (realDriverClassName.equals(JdbcConstants.OCEANBASE_DRIVER)) { // 写一个真实的 TestCase
-                if (JdbcUtils.OCEANBASE_ORACLE.equalsIgnoreCase(dbType)) {
+                if (JdbcUtils.OCEANBASE_ORACLE.name().equalsIgnoreCase(dbTypeName)) {
                     this.exceptionSorter = new OceanBaseOracleExceptionSorter();
                 } else {
                     this.exceptionSorter = new MySqlExceptionSorter();
@@ -1949,6 +1972,10 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                     return;
                 }
             }
+            if (holder.initSchema != null) {
+                holder.conn.setSchema(holder.initSchema);
+                holder.initSchema = null;
+            }
 
             if (!enable) {
                 discardConnection(holder);
@@ -2089,6 +2116,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                 filter.destroy();
             }
         } finally {
+            this.closing = false;
             lock.unlock();
         }
 
@@ -2134,7 +2162,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
     }
 
     boolean putLast(DruidConnectionHolder e, long lastActiveTimeMillis) {
-        if (poolingCount >= maxActive || e.discard) {
+        if (poolingCount >= maxActive || e.discard || this.closed) {
             return false;
         }
 
@@ -2405,7 +2433,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
         }
 
         value.setName(this.getName());
-        value.setDbType(this.dbType);
+        value.setDbType(this.dbTypeName);
         value.setDriverClassName(this.getDriverClassName());
 
         value.setUrl(this.getUrl());
@@ -2488,7 +2516,14 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
     private boolean put(DruidConnectionHolder holder, long createTaskId) {
         lock.lock();
         try {
+            if (this.closing || this.closed) {
+                return false;
+            }
+
             if (poolingCount >= maxActive) {
+                if (createScheduler != null) {
+                    clearCreateTask(createTaskId);
+                }
                 return false;
             }
             connections[poolingCount] = holder;
@@ -2760,7 +2795,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                     lastCreateError = e;
                     lastErrorTimeMillis = System.currentTimeMillis();
 
-                    if (!closing) {
+                    if ((!closing) && (!closed)) {
                         LOG.error("create connection Thread Interrupted, url: " + jdbcUrl, e);
                     }
                     break;
@@ -2820,6 +2855,10 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                 }
 
                 errorCount = 0; // reset errorCount
+
+                if (closing || closed) {
+                    break;
+                }
             }
         }
     }
@@ -2837,7 +2876,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             for (;;) {
                 // 从前面开始删除
                 try {
-                    if (closed) {
+                    if (closed || closing) {
                         break;
                     }
 
@@ -3474,7 +3513,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
             map.put("MinEvictableIdleTimeMillis", this.minEvictableIdleTimeMillis);
             map.put("ConnectErrorCount", this.getConnectErrorCount());
             map.put("CreateTimespanMillis", this.getCreateTimespanMillis());
-            map.put("DbType", this.dbType);
+            map.put("DbType", this.dbTypeName);
 
             // 20 - 24
             map.put("ValidationQuery", this.getValidationQuery());
@@ -3550,7 +3589,7 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
 
         dataMap.put("Identity", System.identityHashCode(this));
         dataMap.put("Name", this.getName());
-        dataMap.put("DbType", this.dbType);
+        dataMap.put("DbType", this.dbTypeName);
         dataMap.put("DriverClassName", this.getDriverClassName());
 
         dataMap.put("URL", this.getUrl());
@@ -3870,5 +3909,9 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
 
     public void setCheckExecuteTime(boolean checkExecuteTime) {
         this.checkExecuteTime = checkExecuteTime;
+    }
+
+    public void forEach(Connection conn) {
+
     }
 }

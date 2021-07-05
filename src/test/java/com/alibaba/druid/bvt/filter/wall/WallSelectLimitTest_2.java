@@ -41,6 +41,27 @@ public class WallSelectLimitTest_2 extends TestCase {
                 "LIMIT 10", resultSql);
     }
 
+    public void testMySql_0() throws Exception {
+        String sql = "select * from t";
+        WallProvider provider = new MySqlWallProvider(config);
+        {
+            WallCheckResult checkResult = provider.check(sql);
+            String resultSql = checkResult.getSql();
+            System.out.println(resultSql);
+            assertEquals("SELECT *\n" +
+                    "FROM t\n" +
+                    "LIMIT 1000", resultSql);
+        }
+        {
+            WallCheckResult checkResult = provider.check(sql);
+            String resultSql = checkResult.getSql();
+            System.out.println(resultSql);
+            assertEquals("SELECT *\n" +
+                    "FROM t\n" +
+                    "LIMIT 1000", resultSql);
+        }
+    }
+
     public void testPG() throws Exception {
         String sql = "select * from t limit 10";
         WallProvider provider = new PGWallProvider(config);

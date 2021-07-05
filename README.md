@@ -1,6 +1,3 @@
-# 请参与投票
-* 2019最受欢迎中国开源软件评选投票 https://www.oschina.net/project/top_cn_2019 请参与投票
-
 # druid
 
 [![Build Status](https://travis-ci.org/alibaba/druid.svg?branch=master)](https://travis-ci.org/alibaba/druid)
@@ -15,6 +12,9 @@ Introduction
 - git clone https://github.com/alibaba/druid.git
 - cd druid && mvn install
 - have fun.
+
+# 相关阿里云产品
+* [DataWorks数据集成](https://help.aliyun.com/document_detail/137663.html) ![DataWorks](https://github.com/alibaba/druid/raw/master/doc/dataworks_datax.png)
 
 Documentation
 ---
