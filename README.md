@@ -1,3 +1,5 @@
+Druid是Java语言中最好的数据库连接池。Druid能够提供强大的监控和扩展功能。
+
 # druid
 
 [![Build Status](https://travis-ci.org/alibaba/druid.svg?branch=master)](https://travis-ci.org/alibaba/druid)
